@@ -1,7 +1,7 @@
 {
-    "required_api_version": "2",
-    "name": "Fedora Toolbox Finder",
-    "description": "Search your Fedora Toolboxes and enter them instantly from Ulauncher.",
+    "required_api_version": "2.0.0",
+    "name": "Toolbox Manager",
+    "description": "Search and launch Toolboxes/Distroboxes instantly in your favorite terminal",
     "developer_name": "Pribal",
     "icon": "images/icon.png",
     "options": {
@@ -12,23 +12,23 @@
             "id": "keyword",
             "type": "keyword",
             "name": "Keyword",
-            "description": "Keyword to toogle the extension",
+            "description": "Keyword to trigger the extension",
             "default_value": "tb"
         },
         {
             "id": "terminal",
-            "type": "input",
-            "name": "Terminal",
-            "description": "Terminal where to open the found toolbox",
+            "type": "select",
+            "name": "Terminal Emulator",
+            "description": "Choose which terminal to use for the 'enter' command",
             "default_value": "auto",
             "options": [
-                "auto", // xdg-terminal-exec
-                "kitty", // kitty -e toolbox enter
-                "alacritty", // alacritty -e toolbox enter
-                "wezterm", // wezterm start -- toolbox enter
-                "foot", // foot toolbox enter
-                "st", // st -e toolbox enter
-                "urxvt" // urxvt -e toolbox enter
+                "auto",
+                "kitty",
+                "alacritty",
+                "wezterm",
+                "foot",
+                "st",
+                "urxvt"
             ]
         }
     ]

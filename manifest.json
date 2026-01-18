@@ -30,6 +30,20 @@
                 "st",
                 "urxvt"
             ]
+        },
+        {
+            "id": "image",
+            "type": "input",
+            "name": "Image",
+            "description": "Image used to create toolboxes",
+            "default_value": ""
+        },
+        {
+            "id": "enter_command",
+            "type": "input",
+            "name": "Command",
+            "description": "Command used to enter toolbox. Use %name in command to refer to toolbox name",
+            "default_value": "toolbox enter"
         }
     ]
 }

@@ -1,113 +1,153 @@
-# Ulauncher API
+# Client
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
-from ulauncher.api.shared.event import KeywordQueryEvent
+
+# Events
+from ulauncher.api.shared.event import (
+    KeywordQueryEvent,
+    PreferencesEvent,
+    PreferencesUpdateEvent,
+)
+
+# UI
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
+
+# Actions
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 from ulauncher.api.shared.action.RunScriptAction import RunScriptAction
 
-# Libs
-import logging
-import subprocess
-
-logger = logging.getLogger(__name__)
+# Toolbox
+from toolbox import Toolbox
 
 
 class ToolBoxExtension(Extension):
-    """Main Extension class to handle Ulauncher lifecycle."""
+    toolbox: Toolbox
 
     def __init__(self):
         super().__init__()
+
+        self.toolbox = Toolbox()
+
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
+        self.subscribe(PreferencesEvent, PreferencesEventListener())
+        self.subscribe(PreferencesUpdateEvent, PreferencesUpdateEventListener())
+
+
+class PreferencesEventListener(EventListener):
+    """Initial loading of user preferences"""
+
+    def on_event(self, event, extension):
+        # Get preferences
+        preferences = event.preferences
+
+        # Get user preferences
+        terminal = preferences.get("terminal", "auto")
+        image = preferences.get("image", "")
+        enter_command = preferences.get("enter_command", "toolbox enter")
+
+        # Set them globally
+        extension.toolbox.setTerminal(terminal)
+        extension.toolbox.setImage(image)
+        extension.toolbox.setEnterCommand(enter_command)
+
+
+class PreferencesUpdateEventListener(EventListener):
+    """Update preferences while the extension is running"""
+
+    def on_event(self, event, extension):
+        if event.id == "terminal":
+            extension.toolbox.setTerminal(event.new_value)
+        elif event.id == "enter_command":
+            extension.toolbox.setEnterCommand(event.new_value)
+        elif event.id == "image":
+            extension.toolbox.setImage(event.new_value)
 
 
 class KeywordQueryEventListener(EventListener):
-    """Listener for user keyword input."""
-
-    # Map of terminal IDs to their execution commands
-    TERMINAL_COMMANDS = {
-        "auto": "xdg-terminal-exec",
-        "kitty": "kitty -e",
-        "alacritty": "alacritty -e",
-        "wezterm": "wezterm start --",
-        "foot": "foot",
-        "st": "st -e",
-        "urxvt": "urxvt -e",
-    }
-
-    @staticmethod
-    def get_toolbox_names():
-        try:
-            result = subprocess.run(
-                [
-                    "podman",
-                    "ps",
-                    "-a",
-                    "--filter",
-                    "label=com.github.containers.toolbox=true",
-                    "--format",
-                    "{{.Names}}",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return [name for name in result.stdout.strip().split("\n") if name]
-        except Exception:
-            return []
-
     def on_event(self, event, extension):
-        # Normalize query input
-        query = (event.get_argument() or "").strip().lower()
+        query = event.get_argument() or ""
 
-        # Get terminal preference with a safe fallback
-        terminal_key = extension.preferences.get("terminal", "auto")
-        terminal_cmd = self.TERMINAL_COMMANDS.get(terminal_key, "xdg-terminal-exec")
+        if query.startswith("create"):
+            name = query.replace("create", "", 1).strip()
+            return RenderResultListAction(self.handle_create_toolbox(name, extension))
+            
+        elif query.startswith("rm"):
+            search = query.replace("rm", "", 1).strip()
+            return RenderResultListAction(self.handle_remove_toolbox(search, extension))
+            
+        else:
+            return RenderResultListAction(self.handle_enter_toolbox(query.strip(), extension))
 
-        try:
-            toolbox_names = self.get_toolbox_names()
-        except Exception as e:
-            logger.error(f"Failed to fetch toolboxes: {e}")
-            return RenderResultListAction(
-                [
-                    ExtensionResultItem(
-                        icon="images/icon.png",
-                        name="Error fetching toolboxes",
-                        description="Make sure 'toolbox' or 'distrobox' is installed.",
-                        on_enter=HideWindowAction(),
-                    )
-                ]
-            )
-
-        items = []
-
-        # Filter and build result items
-        for name in toolbox_names:
-            if not query or query in name.lower():
-                items.append(
-                    ExtensionResultItem(
-                        icon="images/icon.png",
-                        name=name.capitalize(),
-                        description=f"Open {name} in {terminal_key}",
-                        on_enter=RunScriptAction(
-                            f"{terminal_cmd} toolbox enter {name}"
-                        ),
-                    )
-                )
-
-        # Handle empty results
-        if not items:
-            items.append(
+    def handle_create_toolbox(
+        self, toolboxName: str, extension
+    ) -> list[ExtensionResultItem]:
+        if not toolboxName:
+            return [
                 ExtensionResultItem(
-                    icon="images/icon.png",
-                    name="No toolboxes found",
-                    description="Try a different search term or create a new toolbox.",
+                    icon="images/add_toolbox.png",
+                    name="Enter a name for the new toolbox...",
                     on_enter=HideWindowAction(),
                 )
-            )
+            ]
 
-        return RenderResultListAction(items)
+        cmd = extension.toolbox.get_create_command(toolboxName)
+
+        return [
+            ExtensionResultItem(
+                icon="images/add_toolbox.png",
+                name=f"Create toolbox {toolboxName}",
+                on_enter=RunScriptAction(cmd),
+            )
+        ]
+
+    def handle_remove_toolbox(
+        self, userSearch: str, extension
+    ) -> list[ExtensionResultItem]:
+        toolboxes = extension.toolbox.get_toolbox_names()
+        founded_toolboxes = []
+
+        for toolbox in toolboxes:
+            if not userSearch or userSearch in toolbox.lower():
+                cmd = extension.toolbox.get_remove_command(toolbox)
+                founded_toolboxes.append(
+                    ExtensionResultItem(
+                        icon="images/remove_toolbox.png",
+                        name=f"Remove {toolbox}",
+                        on_enter=RunScriptAction(cmd),
+                    )
+                )
+
+        return founded_toolboxes if founded_toolboxes else self.noToolboxFound()
+
+    def handle_enter_toolbox(
+        self, userSearch: str, extension
+    ) -> list[ExtensionResultItem]:
+        toolboxes = extension.toolbox.get_toolbox_names()
+        founded_toolboxes = []
+
+        for toolbox in toolboxes:
+            if not userSearch or userSearch in toolbox.lower():
+                cmd = extension.toolbox.get_enter_command(toolbox)
+                founded_toolboxes.append(
+                    ExtensionResultItem(
+                        icon="images/icon.png",
+                        name=toolbox.capitalize(),
+                        description=f"Enter {toolbox}",
+                        on_enter=RunScriptAction(cmd),
+                    )
+                )
+
+        return founded_toolboxes if founded_toolboxes else self.noToolboxFound()
+
+    def noToolboxFound(self) -> list[ExtensionResultItem]:
+        return [
+            ExtensionResultItem(
+                icon="images/icon.png",
+                name="No toolbox found",
+                on_enter=HideWindowAction(),
+            )
+        ]
 
 
 if __name__ == "__main__":
